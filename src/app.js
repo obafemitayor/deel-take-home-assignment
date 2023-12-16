@@ -13,10 +13,25 @@ app.set('models', sequelize.models)
  */
 app.get('/contracts/:id', getProfile, async (req, res) => {
   const { Contract } = req.app.get('models')
+
   const { id } = req.params
-  // const contract = await Contract.findOne({where: {id}})
-  const contract = await Contract.findOne({ where: { id, ClientId: clientId } })
+
+  if (!id) return res.status(400).send('Id is required')
+
+  if (!isNaN(id)) return res.status(400).send('Id must be a number')
+
+  const query = { id }
+
+  if (req.profile.type === 'client') {
+    query.ClientId = req.profile.id
+  } else {
+    query.ContractorId = req.profile.id
+  }
+
+  const contract = await Contract.findOne({ where: query })
+
   if (!contract) return res.status(404).end()
+
   res.json(contract)
 })
 module.exports = app
