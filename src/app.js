@@ -46,4 +46,19 @@ app.get('/contracts', getProfile, async (req, res) => {
   res.json(contracts)
 })
 
+/**
+ * @returns unpaid jobs
+ */
+app.get('/jobs/unpaid', getProfile, async (req, res) => {
+  const unpaidJobs = await req.profile.getJobs({
+    where: {
+      paid: false
+    }
+  })
+
+  if (!unpaidJobs) return res.status(404).end()
+
+  res.json(unpaidJobs)
+})
+
 module.exports = app
