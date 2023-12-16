@@ -34,4 +34,16 @@ app.get('/contracts/:id', getProfile, async (req, res) => {
 
   res.json(contract)
 })
+
+/**
+ * @returns contracts
+ */
+app.get('/contracts', getProfile, async (req, res) => {
+  const contracts = await req.profile.getContracts()
+
+  if (!contracts) return res.status(404).end()
+
+  res.json(contracts)
+})
+
 module.exports = app
