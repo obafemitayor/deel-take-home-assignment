@@ -25,7 +25,8 @@ Profile.init(
     },
     type: {
       type: Sequelize.ENUM('client', 'contractor')
-    }
+    },
+    version: true
   },
   {
     sequelize,
@@ -42,7 +43,8 @@ Contract.init(
     },
     status: {
       type: Sequelize.ENUM('new', 'in_progress', 'terminated')
-    }
+    },
+    version: true
   },
   {
     sequelize,
@@ -67,7 +69,8 @@ Job.init(
     },
     paymentDate: {
       type: Sequelize.DATE
-    }
+    },
+    version: true
   },
   {
     sequelize,
