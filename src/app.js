@@ -2,72 +2,22 @@ const express = require('express')
 const bodyParser = require('body-parser')
 const { sequelize } = require('./model')
 const { getProfile } = require('./middleware/getProfile')
-const { validateJobPaymentRequest, validateDepositBalanceRequest } = require('./validation-utils')
+const {
+  validateJobPaymentRequest,
+  validateDepositBalanceRequest,
+  validateMostEarningProfessionRequest,
+  validateHighestPayingClientsRequest
+} = require('./validation-utils')
+const {
+  getJobForPayment,
+  makePaymentForJob,
+  getMostEarningProfession,
+  getHighestPayingClients
+} = require('./utils')
 const app = express()
 app.use(bodyParser.json())
 app.set('sequelize', sequelize)
 app.set('models', sequelize.models)
-
-const getJobForPayment = (req) => {
-  const { Contract, Profile } = req.app.get('models')
-
-  const { jobId } = req.params
-
-  return req.profile.getJobs({
-    include: [
-      {
-        model: Contract,
-        include: [
-          {
-            model: Profile,
-            as: 'Contractor',
-            attributes: ['id', 'balance']
-          },
-          {
-            model: Profile,
-            as: 'Client',
-            attributes: ['id', 'balance']
-          }
-        ]
-      }
-    ],
-    where: {
-      id: jobId
-    }
-  })
-}
-
-const makePaymentForJob = async (job, amount, res) => {
-  const contractorProfile = job.Contract.Contractor
-
-  const clientProfile = job.Contract.Client
-
-  const transaction = await sequelize.transaction()
-
-  try {
-    const contractorBalance = contractorProfile.balance - amount
-
-    const clientBalance = clientProfile.balance + amount
-
-    const promises = []
-
-    promises.add(contractorProfile.update({ balance: contractorBalance }))
-
-    promises.add(clientProfile.update({ balance: clientBalance }))
-
-    await Promise.all(promises)
-
-    await transaction.commit()
-  } catch (error) {
-    await transaction.rollback()
-
-    if (error instanceof sequelize.ConflictError) {
-      res.status(409).end()
-    } else {
-      res.status(500).end()
-    }
-  }
-}
 
 const isCustomError = (error) => {
   try {
@@ -126,7 +76,7 @@ app.get('/jobs/unpaid', getProfile, async (req, res) => {
 
 app.post('/jobs/:jobId/pay', getProfile, async (req, res) => {
   try {
-    validateJobPaymentRequest(req, res)
+    validateJobPaymentRequest(req)
 
     const job = await getJobForPayment(req)
 
@@ -146,13 +96,55 @@ app.post('/jobs/:jobId/pay', getProfile, async (req, res) => {
 
 app.post('/balances/deposit/:userId', getProfile, async (req, res) => {
   try {
-    validateDepositBalanceRequest(req, res)
+    validateDepositBalanceRequest(req)
 
     const newBalance = req.profile.balance + req.body.amount
 
     await req.profile.update({ balance: newBalance })
 
     res.status(200).end()
+  } catch (error) {
+    if (!isCustomError(error.message)) res.status(500).end()
+
+    const errorMessage = JSON.parse(error.message)
+
+    res.status(errorMessage.status).send(errorMessage.message)
+  }
+})
+
+app.get('/admin/best-profession', async (req, res) => {
+  try {
+    validateMostEarningProfessionRequest(req)
+
+    const mostEarningProfession = await getMostEarningProfession(req)
+
+    if (!mostEarningProfession) return res.status(404).end()
+
+    res.json(mostEarningProfession)
+  } catch (error) {
+    if (!isCustomError(error.message)) res.status(500).end()
+
+    const errorMessage = JSON.parse(error.message)
+
+    res.status(errorMessage.status).send(errorMessage.message)
+  }
+})
+
+app.get('/admin/best-clients', async (req, res) => {
+  try {
+    validateHighestPayingClientsRequest(req)
+
+    const highestPayingClients = await getHighestPayingClients(req)
+
+    if (!highestPayingClients) return res.status(404).end()
+
+    const highestPayingClientsResult = highestPayingClients.map((job) => ({
+      id: job.dataValues.clientId,
+      fullName: job.dataValues.fullName,
+      totalPaid: job.dataValues.totalPaid
+    }))
+
+    res.json({ highestPayingClientsResult })
   } catch (error) {
     if (!isCustomError(error.message)) res.status(500).end()
 

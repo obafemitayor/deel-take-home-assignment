@@ -1,4 +1,4 @@
-const validateJobPaymentRequest = (req, res) => {
+const validateJobPaymentRequest = (req) => {
   const { jobId } = req.params
 
   if (!jobId) throw new Error(JSON.stringify({ status: 400, message: 'job Id is required' }))
@@ -12,7 +12,7 @@ const validateJobPaymentRequest = (req, res) => {
   if (!isNaN(req.body.amount)) throw new Error(JSON.stringify({ status: 400, message: 'amount must be a number' }))
 }
 
-const validateDepositBalanceRequest = (req, res) => {
+const validateDepositBalanceRequest = (req) => {
   const { userId } = req.params
 
   if (!userId) throw new Error(JSON.stringify({ status: 400, message: 'userId is required' }))
@@ -32,4 +32,31 @@ const validateDepositBalanceRequest = (req, res) => {
   if (req.body.amount > depositLimit) throw new Error(JSON.stringify({ status: 403, message: `You can only deposit up to ${depositLimit}` }))
 }
 
-module.exports = { validateJobPaymentRequest, validateDepositBalanceRequest }
+const validateDateRequest = (start, end) => {
+  if (!start || !end) throw new Error(JSON.stringify({ status: 400, message: 'start and end dates are required' }))
+
+  if (start === end) throw new Error(JSON.stringify({ status: 400, message: 'start and end dates cannot be equal' }))
+
+  if (start > end) throw new Error(JSON.stringify({ status: 400, message: 'start date param cannot be greater than end date' }))
+}
+
+const validateMostEarningProfessionRequest = (req) => {
+  const { start, end } = req.query
+
+  validateDateRequest(start, end)
+}
+
+const validateHighestPayingClientsRequest = (req) => {
+  const { start, end, limit } = req.query
+  validateDateRequest(start, end)
+  if (!limit) return
+
+  if (!isNaN(limit)) throw new Error(JSON.stringify({ status: 400, message: 'limit must be a number' }))
+}
+
+module.exports = {
+  validateJobPaymentRequest,
+  validateDepositBalanceRequest,
+  validateMostEarningProfessionRequest,
+  validateHighestPayingClientsRequest
+}
