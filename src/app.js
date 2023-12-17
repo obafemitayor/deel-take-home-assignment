@@ -1,5 +1,6 @@
 const express = require('express')
 const bodyParser = require('body-parser')
+const { Op } = require('sequelize')
 const { sequelize } = require('./model')
 const { getProfile } = require('./middleware/getProfile')
 const {
@@ -9,7 +10,7 @@ const {
   validateHighestPayingClientsRequest
 } = require('./validation-utils')
 const {
-  getJobForPayment,
+  getModelsRequiredForPayment,
   makePaymentForJob,
   getMostEarningProfession,
   getHighestPayingClients
@@ -29,7 +30,6 @@ const isCustomError = (error) => {
 }
 
 /**
- * FIX ME!
  * @returns contract by id
  */
 app.get('/contracts/:id', getProfile, async (req, res) => {
@@ -37,11 +37,13 @@ app.get('/contracts/:id', getProfile, async (req, res) => {
 
   if (!id) return res.status(400).send('Id is required')
 
-  if (!isNaN(id)) return res.status(400).send('Id must be a number')
+  const parseId = parseInt(id, 10)
 
-  const contract = await req.profile.getContracts({
-    where: { id }
-  })
+  if (isNaN(parseId)) return res.status(400).send('Id must be a number')
+
+  const query = { where: { id: parseId } }
+
+  const contract = req.profile.type === 'client' ? await req.profile.getClient(query) : await req.profile.getContract(query)
 
   if (!contract) return res.status(404).end()
 
@@ -52,9 +54,11 @@ app.get('/contracts/:id', getProfile, async (req, res) => {
  * @returns contracts
  */
 app.get('/contracts', getProfile, async (req, res) => {
-  const contracts = await req.profile.getContracts()
+  const query = { where: { status: { [Op.ne]: 'terminated' } } }
 
-  if (!contracts) return res.status(404).end()
+  const contracts = req.profile.type === 'client' ? await req.profile.getClient(query) : await req.profile.getContract(query)
+
+  if (!contracts || contracts.length === 0) return res.status(404).end()
 
   res.json(contracts)
 })
@@ -63,26 +67,36 @@ app.get('/contracts', getProfile, async (req, res) => {
  * @returns unpaid jobs
  */
 app.get('/jobs/unpaid', getProfile, async (req, res) => {
-  const unpaidJobs = await req.profile.getJobs({
-    where: {
-      paid: false
-    }
-  })
+  const { Job } = req.app.get('models')
 
-  if (!unpaidJobs) return res.status(404).end()
+  const query = {
+    include: [{
+      model: Job,
+      where: { paid: { [Op.or]: [null, false] } }
+    }]
+  }
+
+  const userData = req.profile.type === 'client' ? await req.profile.getClient(query) : await req.profile.getContract(query)
+
+  if (!userData || userData.length === 0) return res.status(404).end()
+
+  const unpaidJobs = userData.reduce((acc, user) => {
+    return [...acc, ...user.dataValues.Jobs]
+  }, [])
 
   res.json(unpaidJobs)
 })
 
+/**
+ * @makes payment for job
+ */
 app.post('/jobs/:jobId/pay', getProfile, async (req, res) => {
   try {
-    validateJobPaymentRequest(req)
+    await validateJobPaymentRequest(req)
 
-    const job = await getJobForPayment(req)
+    const { job, contractor } = await getModelsRequiredForPayment(req)
 
-    if (!job) return res.status(404).end()
-
-    await makePaymentForJob(job, req.body.amount, res)
+    await makePaymentForJob(job, contractor, req.profile, req.body.amount)
 
     res.status(200).end()
   } catch (error) {
@@ -94,9 +108,12 @@ app.post('/jobs/:jobId/pay', getProfile, async (req, res) => {
   }
 })
 
+/**
+ * @makes deposit for user
+ */
 app.post('/balances/deposit/:userId', getProfile, async (req, res) => {
   try {
-    validateDepositBalanceRequest(req)
+    await validateDepositBalanceRequest(req)
 
     const newBalance = req.profile.balance + req.body.amount
 
@@ -112,13 +129,20 @@ app.post('/balances/deposit/:userId', getProfile, async (req, res) => {
   }
 })
 
+/**
+ * @returns best profession
+ */
 app.get('/admin/best-profession', async (req, res) => {
   try {
     validateMostEarningProfessionRequest(req)
 
-    const mostEarningProfession = await getMostEarningProfession(req)
+    const sequelizeResult = await getMostEarningProfession(req)
 
-    if (!mostEarningProfession) return res.status(404).end()
+    const data = sequelizeResult[0]
+
+    if (!data) return res.status(404).end()
+
+    const mostEarningProfession = data.Contract.Contractor.profession
 
     res.json(mostEarningProfession)
   } catch (error) {
@@ -130,6 +154,9 @@ app.get('/admin/best-profession', async (req, res) => {
   }
 })
 
+/**
+ * @returns best clients
+ */
 app.get('/admin/best-clients', async (req, res) => {
   try {
     validateHighestPayingClientsRequest(req)
@@ -139,9 +166,9 @@ app.get('/admin/best-clients', async (req, res) => {
     if (!highestPayingClients) return res.status(404).end()
 
     const highestPayingClientsResult = highestPayingClients.map((job) => ({
-      id: job.dataValues.clientId,
-      fullName: job.dataValues.fullName,
-      totalPaid: job.dataValues.totalPaid
+      id: job.Contract.Client.id,
+      fullName: `${job.Contract.Client.firstName} ${job.Contract.Client.lastName}`,
+      paid: job.dataValues.totalPaid
     }))
 
     res.json({ highestPayingClientsResult })

@@ -1,52 +1,40 @@
 const { Op } = require('sequelize')
 const { sequelize } = require('./model')
 
-const getJobForPayment = (req) => {
-  const { Contract, Profile } = req.app.get('models')
+const getPaymentJob = (req) => {
+  const { Job, Profile } = req.app.get('models')
 
   const { jobId } = req.params
 
-  return req.profile.getJobs({
-    include: [
-      {
-        model: Contract,
-        include: [
-          {
-            model: Profile,
-            as: 'Contractor',
-            attributes: ['id', 'balance']
-          },
-          {
-            model: Profile,
-            as: 'Client',
-            attributes: ['id', 'balance']
-          }
-        ]
-      }
-    ],
-    where: {
-      id: jobId
-    }
-  })
+  const query = {
+    include: [{
+      model: Job,
+      where: { id: jobId }
+    },
+    {
+      model: Profile,
+      as: 'Contractor'
+    }]
+  }
+
+  return req.profile.getClient(query)
 }
 
-const makePaymentForJob = async (job, amount, res) => {
-  const contractorProfile = job.Contract.Contractor
-
-  const clientProfile = job.Contract.Client
-
+const makePaymentForJob = async (job, contractorProfile, clientProfile, amount) => {
   const transaction = await sequelize.transaction()
 
   try {
-    const contractorBalance = contractorProfile.balance - amount
+    const contractorBalance = contractorProfile.balance + amount
 
-    const clientBalance = clientProfile.balance + amount
+    const clientBalance = clientProfile.balance - amount
 
     const promises = []
 
-    promises.add(contractorProfile.update({ balance: contractorBalance }))
+    promises.push(contractorProfile.update({ balance: contractorBalance }))
 
-    promises.add(clientProfile.update({ balance: clientBalance }))
+    promises.push(clientProfile.update({ balance: clientBalance }))
+
+    promises.push(job.update({ paid: true, paymentDate: new Date() }))
 
     await Promise.all(promises)
 
@@ -55,9 +43,9 @@ const makePaymentForJob = async (job, amount, res) => {
     await transaction.rollback()
 
     if (error instanceof sequelize.ConflictError) {
-      res.status(409).end()
+      throw new Error(JSON.stringify({ status: 409, message: '' }))
     } else {
-      res.status(500).end()
+      throw new Error(JSON.stringify({ status: 500, message: '' }))
     }
   }
 }
@@ -68,19 +56,19 @@ const getMostEarningProfession = (req) => {
   const { start, end } = req.query
 
   return Job.findAll({
-    attributes: [
-      'Contract.Contractor.profession',
-      [sequelize.fn('SUM', sequelize.literal('price')), 'totalEarnings']
-    ],
+    attributes: {
+      include: [
+        'Contract.Contractor.profession',
+        [sequelize.fn('SUM', sequelize.literal('price')), 'totalEarnings']
+      ]
+    },
     include: [
       {
         model: Contract,
-        attributes: [],
         include: [
           {
             model: Profile,
-            as: 'Contractor',
-            attributes: []
+            as: 'Contractor'
           }
         ]
       }
@@ -104,19 +92,15 @@ const getHighestPayingClients = (req) => {
 
   return Job.findAll({
     attributes: [
-      [sequelize.fn('SUM', sequelize.literal('price')), 'totalPaid'],
-      [sequelize.fn('CONCAT', sequelize.literal('Contract.Client.firstName'), ' ', sequelize.literal('Contract.Client.lastName')), 'fullName'],
-      [sequelize.literal('Contract.Client.id'), 'clientId']
+      [sequelize.fn('SUM', sequelize.literal('price')), 'totalPaid']
     ],
     include: [
       {
         model: Contract,
-        attributes: [],
         include: [
           {
             model: Profile,
-            as: 'Client',
-            attributes: ['firstName', 'lastName', 'id']
+            as: 'Client'
           }
         ]
       }
@@ -133,8 +117,24 @@ const getHighestPayingClients = (req) => {
   })
 }
 
+const getModelsRequiredForPayment = async (req) => {
+  const data = await getPaymentJob(req)
+
+  const userData = data[0]
+
+  if (!userData) throw new Error(JSON.stringify({ status: 404, message: 'Job not found' }))
+
+  const job = userData.Jobs[0]
+
+  if (job.paid) throw new Error(JSON.stringify({ status: 400, message: 'Job has already been paid for' }))
+
+  const contractor = userData.Contractor
+
+  return { job, contractor }
+}
+
 module.exports = {
-  getJobForPayment,
+  getModelsRequiredForPayment,
   makePaymentForJob,
   getMostEarningProfession,
   getHighestPayingClients
