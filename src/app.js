@@ -3,18 +3,21 @@ const bodyParser = require('body-parser')
 const { Op } = require('sequelize')
 const { sequelize } = require('./model')
 const { getProfile } = require('./middleware/getProfile')
+
 const {
   validateJobPaymentRequest,
   validateDepositBalanceRequest,
   validateMostEarningProfessionRequest,
   validateHighestPayingClientsRequest
 } = require('./validation-utils')
+
 const {
   getModelsRequiredForPayment,
   makePaymentForJob,
   getMostEarningProfession,
   getHighestPayingClients
 } = require('./utils')
+
 const app = express()
 app.use(bodyParser.json())
 app.set('sequelize', sequelize)
@@ -35,15 +38,13 @@ const isCustomError = (error) => {
 app.get('/contracts/:id', getProfile, async (req, res) => {
   const { id } = req.params
 
-  if (!id) return res.status(400).send('Id is required')
-
   const parseId = parseInt(id, 10)
 
   if (isNaN(parseId)) return res.status(400).send('Id must be a number')
 
   const query = { where: { id: parseId } }
 
-  const contract = req.profile.type === 'client' ? await req.profile.getClient(query) : await req.profile.getContract(query)
+  const contract = req.profile.type === 'client' ? await req.profile.getClient(query) : await req.profile.getContractor(query)
 
   if (!contract) return res.status(404).end()
 
@@ -56,7 +57,7 @@ app.get('/contracts/:id', getProfile, async (req, res) => {
 app.get('/contracts', getProfile, async (req, res) => {
   const query = { where: { status: { [Op.ne]: 'terminated' } } }
 
-  const contracts = req.profile.type === 'client' ? await req.profile.getClient(query) : await req.profile.getContract(query)
+  const contracts = req.profile.type === 'client' ? await req.profile.getClient(query) : await req.profile.getContractor(query)
 
   if (!contracts || contracts.length === 0) return res.status(404).end()
 
@@ -70,13 +71,18 @@ app.get('/jobs/unpaid', getProfile, async (req, res) => {
   const { Job } = req.app.get('models')
 
   const query = {
+    where: { status: { [Op.ne]: 'terminated' } },
     include: [{
       model: Job,
-      where: { paid: { [Op.or]: [null, false] } }
+      where: {
+        paid: {
+          [Op.or]: [null, false]
+        }
+      }
     }]
   }
 
-  const userData = req.profile.type === 'client' ? await req.profile.getClient(query) : await req.profile.getContract(query)
+  const userData = req.profile.type === 'client' ? await req.profile.getClient(query) : await req.profile.getContractor(query)
 
   if (!userData || userData.length === 0) return res.status(404).end()
 

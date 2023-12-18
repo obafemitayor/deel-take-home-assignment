@@ -60,7 +60,7 @@ const validateDepositBalanceRequest = async (req) => {
 
   const depositLimit = await getDepositLimit(req)
 
-  if (req.body.amount > depositLimit) throw new Error(JSON.stringify({ status: 403, message: `You can only deposit up to ${depositLimit}` }))
+  if (req.body.amount > depositLimit) throw new Error(JSON.stringify({ status: 403, message: `Limit exceeded, You can only deposit up to $${depositLimit}` }))
 }
 
 const validateDateRequest = (start, end) => {
