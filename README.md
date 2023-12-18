@@ -96,3 +96,10 @@ It would be great for example if you'd write some unit test / simple frontend de
 When you have finished the assignment, zip your repo (make sure to include .git folder) and send us the zip.
 
 Thank you and good luck! 🙏
+
+## Things I would have loved to implement
+
+- Further improve test coverage by adding integrations tests for the `/admin/best-profession` and `/admin/best-clients` endpoints. 
+- Oauth implementation with JWT to prevent CORF attacks
+- GraphQL to prevent overfetching of data
+- Some frontend implementation to just see how the API works
