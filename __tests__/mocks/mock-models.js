@@ -1,4 +1,4 @@
-const { profileModelQueryHandler, contractModelQueryHandler, jobModelQueryHandler } = require('./query-handlers')
+const { registerHandlers } = require('./mock-factory')
 
 const SequelizeMock = require('sequelize-mock')
 
@@ -10,17 +10,7 @@ const contractModel = sequelizeMock.define('Contract')
 
 const jobModel = sequelizeMock.define('Job')
 
-contractModel.$queryInterface.$useHandler(function (query, queryOptions) {
-  return contractModelQueryHandler[query](queryOptions, contractModel)
-})
-
-profileModel.$queryInterface.$useHandler(function (query, queryOptions) {
-  return profileModelQueryHandler[query](queryOptions, profileModel)
-})
-
-jobModel.$queryInterface.$useHandler(function (query, queryOptions) {
-  return jobModelQueryHandler[query](queryOptions, jobModel)
-})
+registerHandlers(contractModel, profileModel, jobModel)
 
 profileModel.hasMany(contractModel, { as: 'Contractor', foreignKey: 'ContractorId' })
 contractModel.belongsTo(profileModel, { as: 'Contractor' })
